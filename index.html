@@ -1,0 +1,467 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Reading Log</title>
+  <script src="config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+  <style>
+    :root {
+      --accent: #2f6f5e;
+      --bg: #f7f5f0;
+      --card: #ffffff;
+      --text: #1f2421;
+      --muted: #6b716d;
+      --line: #e3e0d8;
+      --danger: #a33a32;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #161917;
+        --card: #202421;
+        --text: #ecefec;
+        --muted: #a2a8a4;
+        --line: #333833;
+        --danger: #e07a70;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.45;
+    }
+    main { max-width: 760px; margin: 0 auto; padding: 24px 16px 64px; }
+    h1 { margin: 0 0 4px; color: var(--accent); font-size: 1.8rem; }
+    .sub { margin: 0 0 20px; color: var(--muted); font-size: .95rem; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+    h2 { margin: 0 0 12px; font-size: 1.1rem; }
+    form { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    label { display: flex; flex-direction: column; gap: 4px; font-size: .85rem; color: var(--muted); }
+    .wide { grid-column: 1 / -1; }
+    input, select, button {
+      font: inherit;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: var(--bg);
+      color: var(--text);
+      min-width: 0;
+    }
+    button {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    button:disabled { opacity: .6; cursor: default; }
+    .totals { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+    .total { border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+    .total .name { font-weight: 600; }
+    .total .nums { color: var(--muted); font-size: .9rem; }
+    .total .big { font-size: 1.5rem; font-weight: 700; color: var(--accent); }
+    /* Reader with the fewest books for the selected year */
+    .total.behind .big { color: var(--danger); }
+    /* "Winning" label above whoever has read the most pages */
+    .winner {
+      display: inline-block; margin-bottom: 4px; padding: 2px 8px; border-radius: 999px;
+      background: #e0a526; color: #fff; font-size: .75rem; font-weight: 700;
+    }
+    /* Label for everyone who isn't winning */
+    .winner.catchup { background: var(--line); color: var(--text); font-weight: 600; border-radius: 8px; }
+    .filters { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+    .filters label { flex: 1 1 140px; }
+    ul.books { list-style: none; margin: 0; padding: 0; }
+    ul.books li {
+      display: flex; gap: 12px; align-items: flex-start;
+      padding: 12px 0; border-top: 1px solid var(--line);
+    }
+    ul.books li:first-child { border-top: none; }
+    .book { flex: 1; min-width: 0; }
+    .book .title { font-weight: 600; overflow-wrap: anywhere; }
+    .book .meta { color: var(--muted); font-size: .88rem; }
+    .remove {
+      background: none; color: var(--danger); border: 1px solid var(--line);
+      padding: 6px 10px; font-size: .8rem; font-weight: 500;
+    }
+    .empty { color: var(--muted); font-style: italic; }
+    /* Star ratings */
+    .stars { display: inline-flex; gap: 2px; }
+    .stars button {
+      background: none; border: none; padding: 2px; font-size: 1.35rem; line-height: 1;
+      color: var(--line); cursor: pointer; font-weight: 400;
+    }
+    .stars button.on { color: #e0a526; }
+    .stars.small button { font-size: 1.1rem; }
+    .rating-row { display: flex; align-items: center; gap: 8px; }
+    .rating-row .hint { font-size: .8rem; color: var(--muted); }
+    .notice {
+      font-size: .85rem; color: var(--muted);
+      border: 1px dashed var(--line); border-radius: 8px; padding: 8px 12px; margin-bottom: 16px;
+    }
+    .yearbar { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+    .yearbar label { font-weight: 600; font-size: 1rem; color: var(--text); }
+    .yearbar select { font-size: 1.05rem; font-weight: 600; min-width: 140px; }
+    .pager {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      margin: 12px 0 16px;
+    }
+    .pager button { padding: 8px 12px; white-space: nowrap; flex: 0 0 auto; }
+    .pager button:disabled { background: var(--line); color: var(--muted); }
+    #pageName { font-weight: 600; color: var(--muted); text-align: center; line-height: 1.2; font-size: .95rem; }
+    #pageName small { display: block; font-weight: 400; font-size: .78rem; }
+    .error { color: var(--danger); font-size: .9rem; min-height: 1.2em; margin: 8px 0 0; }
+    @media (max-width: 520px) { form { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+<main>
+  <h1 id="appTitle">Reading Log</h1>
+  <nav class="pager" aria-label="Pages">
+    <button type="button" id="backBtn">&larr; Back</button>
+    <span id="pageName">Home</span>
+    <button type="button" id="fwdBtn">Forward &rarr;</button>
+  </nav>
+  <div id="modeNotice" class="notice" hidden>
+    Preview mode: books are saved only in this browser until the shared database is connected.
+  </div>
+  <p class="error" id="appError" hidden></p>
+
+  <!-- PAGE 1: HOME (year picker + totals) -->
+  <div class="page" data-page="home">
+  <div class="yearbar">
+    <label for="filterYear">Year</label>
+    <select id="filterYear"></select>
+  </div>
+
+  <section class="card">
+    <h2 id="totalsHeading">Totals</h2>
+    <div class="totals" id="totals"></div>
+  </section>
+  </div>
+
+  <!-- PAGE 2: ADD A BOOK -->
+  <div class="page" data-page="add" hidden>
+  <section class="card">
+    <h2>Add a book</h2>
+    <form id="addForm">
+      <label>Reader
+        <select id="reader" required></select>
+      </label>
+      <label>Date finished
+        <input id="finishedOn" type="date" required>
+      </label>
+      <label class="wide">Title
+        <input id="title" type="text" required autocomplete="off">
+      </label>
+      <label>Author
+        <input id="author" type="text" required autocomplete="off">
+      </label>
+      <label>Pages
+        <input id="pages" type="number" min="1" step="1" required inputmode="numeric">
+      </label>
+      <div class="wide">
+        <label>Rating (optional)</label>
+        <div class="rating-row">
+          <div class="stars" id="formStars" role="radiogroup" aria-label="Rating"></div>
+          <span class="hint" id="formStarsHint">Not rated</span>
+        </div>
+      </div>
+      <button class="wide" type="submit" id="addBtn">Add book</button>
+    </form>
+    <p class="error" id="formError"></p>
+  </section>
+  </div>
+
+  <!-- PAGE 3: LIST OF BOOKS -->
+  <div class="page" data-page="books" hidden>
+  <section class="card">
+    <h2 id="listHeading">Books</h2>
+    <div class="filters">
+      <label>Show reader
+        <select id="filterReader"></select>
+      </label>
+    </div>
+    <ul class="books" id="bookList"></ul>
+  </section>
+  </div>
+</main>
+
+<script>
+(function () {
+  const cfg = window.BOOK_TRACKER_CONFIG || {};
+  const readers = cfg.readers && cfg.readers.length ? cfg.readers : ["Reader 1"];
+  const $ = (id) => document.getElementById(id);
+
+  // ---------- Setup ----------
+  document.title = cfg.appTitle || "Reading Log";
+  $("appTitle").textContent = cfg.appTitle || "Reading Log";
+  if (cfg.accentColor) document.documentElement.style.setProperty("--accent", cfg.accentColor);
+
+  const todayISO = () => {
+    const d = new Date();
+    return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  };
+  $("finishedOn").value = todayISO();
+
+  // No reader is picked by default: you have to choose who read the book.
+  $("reader").innerHTML = `<option value="" disabled selected>Choose a reader</option>` +
+    readers.map(r => `<option>${esc(r)}</option>`).join("");
+
+  // ---------- Storage: Supabase if configured, otherwise this browser ----------
+  const useCloud = !!(cfg.supabaseUrl && cfg.supabaseAnonKey && window.supabase);
+  const db = useCloud ? window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey) : null;
+  if (!useCloud) $("modeNotice").hidden = false;
+
+  const LOCAL_KEY = "bt-books";
+  const localLoad = () => { try { return JSON.parse(localStorage.getItem(LOCAL_KEY)) || []; } catch (e) { return []; } };
+  const localSave = (rows) => { try { localStorage.setItem(LOCAL_KEY, JSON.stringify(rows)); } catch (e) {} };
+
+  const store = {
+    async list() {
+      if (!useCloud) return localLoad();
+      const { data, error } = await db.from("books").select("*").order("finished_on", { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+    async add(book) {
+      if (!useCloud) {
+        const rows = localLoad();
+        rows.push({ ...book, id: Date.now() });
+        localSave(rows);
+        return;
+      }
+      const { error } = await db.from("books").insert(book);
+      if (error) throw error;
+    },
+    async rate(id, rating) {
+      if (!useCloud) { localSave(localLoad().map(b => b.id === id ? { ...b, rating } : b)); return; }
+      const { error } = await db.from("books").update({ rating }).eq("id", id);
+      if (error) throw error;
+    },
+    async remove(id) {
+      if (!useCloud) { localSave(localLoad().filter(b => b.id !== id)); return; }
+      const { error } = await db.from("books").delete().eq("id", id);
+      if (error) throw error;
+    },
+  };
+
+  // ---------- State + rendering ----------
+  let books = [];
+  let formRating = null;
+
+  // Five star buttons. Tapping the current rating again clears it.
+  function starsHTML(rating, id) {
+    let h = "";
+    for (let i = 1; i <= 5; i++) {
+      h += `<button type="button" class="${rating >= i ? "on" : ""}" data-star="${i}"${id != null ? ` data-id="${id}"` : ""} aria-label="${i} star${i > 1 ? "s" : ""}">★</button>`;
+    }
+    return h;
+  }
+  function renderFormStars() {
+    $("formStars").innerHTML = starsHTML(formRating);
+    $("formStarsHint").textContent = formRating ? `${formRating} of 5` : "Not rated";
+  }
+  renderFormStars();
+  $("formStars").addEventListener("click", (ev) => {
+    const s = ev.target.closest("[data-star]");
+    if (!s) return;
+    const n = Number(s.dataset.star);
+    formRating = formRating === n ? null : n;
+    renderFormStars();
+  });
+
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+  const fmtDate = (iso) => new Date(iso + "T12:00:00").toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  const yearOf = (iso) => iso.slice(0, 4);
+
+  function renderFilters() {
+    const prevReader = $("filterReader").value || "all";
+    const prevYear = $("filterYear").value;
+    const allReaders = [...new Set([...readers, ...books.map(b => b.reader)])];
+    $("filterReader").innerHTML = `<option value="all">Everyone</option>` +
+      allReaders.map(r => `<option>${esc(r)}</option>`).join("");
+    $("filterReader").value = allReaders.includes(prevReader) ? prevReader : "all";
+
+    const years = [...new Set([String(new Date().getFullYear()), ...books.map(b => yearOf(b.finished_on))])].sort().reverse();
+    $("filterYear").innerHTML = years.map(y => `<option>${y}</option>`).join("") + `<option value="all">All years</option>`;
+    $("filterYear").value = prevYear && (years.includes(prevYear) || prevYear === "all") ? prevYear : years[0];
+  }
+
+  function render() {
+    const year = $("filterYear").value;
+    const who = $("filterReader").value;
+    const inYear = books.filter(b => year === "all" || yearOf(b.finished_on) === year);
+
+    // Totals per reader
+    $("totalsHeading").textContent = year === "all" ? "Totals (all years)" : `Totals for ${year}`;
+    $("listHeading").textContent = year === "all" ? "Books (all years)" : `Books in ${year}`;
+    const allReaders = [...new Set([...readers, ...inYear.map(b => b.reader)])];
+    // Whoever has the fewest books is shown in red (no one if everyone is tied).
+    const counts = allReaders.map(r => inYear.filter(b => b.reader === r).length);
+    const fewest = Math.min(...counts);
+    const allTied = counts.every(c => c === fewest);
+    // Whoever has the most pages gets "Winning"; everyone else gets "Start Reading to Catch Up!"
+    // (no labels if everyone is tied).
+    const pageTotals = allReaders.map(r => inYear.filter(b => b.reader === r).reduce((s, b) => s + Number(b.pages), 0));
+    const mostPages = Math.max(...pageTotals);
+    const pagesTied = pageTotals.every(n => n === mostPages);
+    $("totals").innerHTML = allReaders.map(r => {
+      const mine = inYear.filter(b => b.reader === r);
+      const pages = mine.reduce((s, b) => s + Number(b.pages), 0);
+      const rated = mine.filter(b => b.rating);
+      const avg = rated.length ? (rated.reduce((s, b) => s + b.rating, 0) / rated.length).toFixed(1) : null;
+      const behind = !allTied && mine.length === fewest;
+      const winner = !pagesTied && pages === mostPages;
+      return `<div class="total${behind ? " behind" : ""}">
+        ${pagesTied ? "" : winner
+          ? `<div class="winner">🏆 Winning</div>`
+          : `<div class="winner catchup">📚 Start Reading to Catch Up!</div>`}
+        <div class="name">${esc(r)}</div>
+        <div class="big">${mine.length} ${mine.length === 1 ? "book" : "books"}</div>
+        <div class="nums">${pages.toLocaleString()} pages</div>
+        ${avg ? `<div class="nums">Avg rating ${avg}&nbsp;★</div>` : ""}
+      </div>`;
+    }).join("");
+
+    // List
+    const shown = inYear
+      .filter(b => who === "all" || b.reader === who)
+      .sort((a, b) => b.finished_on.localeCompare(a.finished_on));
+    $("bookList").innerHTML = shown.length ? shown.map(b => `
+      <li>
+        <div class="book">
+          <div class="title">${esc(b.title)}</div>
+          <div class="meta">${esc(b.author)} · ${Number(b.pages).toLocaleString()} pages</div>
+          <div class="meta">${esc(b.reader)} finished ${fmtDate(b.finished_on)}</div>
+          <div class="stars small">${starsHTML(b.rating, b.id)}</div>
+        </div>
+        <button class="remove" data-id="${b.id}">Remove</button>
+      </li>`).join("") : `<li class="empty">No books yet.</li>`;
+  }
+
+  async function refresh() {
+    try {
+      books = await store.list();
+      showError("");
+    } catch (e) {
+      showError("Couldn't load books: " + (e.message || e));
+    }
+    renderFilters();
+    render();
+  }
+
+  // ---------- Events ----------
+  $("addForm").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const book = {
+      reader: $("reader").value,
+      title: $("title").value.trim(),
+      author: $("author").value.trim(),
+      pages: parseInt($("pages").value, 10),
+      finished_on: $("finishedOn").value,
+      rating: formRating,
+    };
+    if (!book.reader) {
+      $("formError").textContent = "Please choose a reader.";
+      return;
+    }
+    if (!book.title || !book.author || !(book.pages > 0) || !book.finished_on) {
+      $("formError").textContent = "Please fill in every field.";
+      return;
+    }
+    $("addBtn").disabled = true;
+    try {
+      await store.add(book);
+      $("reader").value = "";
+      $("title").value = ""; $("author").value = ""; $("pages").value = "";
+      $("finishedOn").value = todayISO();
+      formRating = null; renderFormStars();
+      $("formError").textContent = "";
+      await refresh();
+      goTo("home");
+    } catch (e) {
+      $("formError").textContent = "Couldn't save: " + (e.message || e);
+    } finally {
+      $("addBtn").disabled = false;
+    }
+  });
+
+  $("bookList").addEventListener("click", async (ev) => {
+    const star = ev.target.closest("[data-star]");
+    if (star) {
+      const id = Number(star.dataset.id);
+      const n = Number(star.dataset.star);
+      const book = books.find(b => b.id === id);
+      const rating = book && book.rating === n ? null : n;
+      try { await store.rate(id, rating); await refresh(); }
+      catch (e) { showError("Couldn't save rating: " + (e.message || e)); }
+      return;
+    }
+    const btn = ev.target.closest(".remove");
+    if (!btn) return;
+    if (btn.dataset.confirm !== "yes") {
+      btn.dataset.confirm = "yes";
+      btn.textContent = "Tap again to remove";
+      setTimeout(() => { btn.dataset.confirm = ""; btn.textContent = "Remove"; }, 3000);
+      return;
+    }
+    try { await store.remove(Number(btn.dataset.id)); await refresh(); }
+    catch (e) { showError("Couldn't remove: " + (e.message || e)); }
+  });
+
+  $("filterReader").addEventListener("change", render);
+  $("filterYear").addEventListener("change", render);
+
+  function showError(msg) {
+    $("appError").textContent = msg;
+    $("appError").hidden = !msg;
+  }
+
+  // ---------- Pages: Home -> Add a book -> Books ----------
+  // The page is kept in the address (#add, #books) so the phone's own
+  // back button works too.
+  const PAGES = ["home", "add", "books"];
+  const PAGE_NAMES = { home: "Home", add: "Add a book", books: "Books" };
+  const currentPage = () => {
+    const h = location.hash.slice(1);
+    return PAGES.includes(h) ? h : "home";
+  };
+  function showPage() {
+    const page = currentPage();
+    document.querySelectorAll(".page").forEach(el => { el.hidden = el.dataset.page !== page; });
+    const i = PAGES.indexOf(page);
+    $("backBtn").disabled = i === 0;
+    $("fwdBtn").disabled = i === PAGES.length - 1;
+    $("pageName").innerHTML = `${PAGE_NAMES[page]}<small>Page ${i + 1} of ${PAGES.length}</small>`;
+    window.scrollTo(0, 0);
+    if (page === "add") $("title").focus();
+  }
+  function goTo(page) {
+    const hash = page === "home" ? "" : "#" + page;
+    if (location.hash !== hash) history.pushState(null, "", hash || location.pathname + location.search);
+    showPage();
+  }
+  $("backBtn").addEventListener("click", () => goTo(PAGES[Math.max(0, PAGES.indexOf(currentPage()) - 1)]));
+  $("fwdBtn").addEventListener("click", () => goTo(PAGES[Math.min(PAGES.length - 1, PAGES.indexOf(currentPage()) + 1)]));
+  window.addEventListener("popstate", showPage);
+  window.addEventListener("hashchange", showPage);
+  showPage();
+
+  refresh();
+})();
+</script>
+</body>
+</html>
