@@ -16,6 +16,6 @@ window.BOOK_TRACKER_CONFIG = {
   // Shared database (Supabase). Leave both blank to run in
   // "preview mode", where books are saved only in this browser.
   // You'll fill these in during the "put it online" step.
-  supabaseUrl: "",
-  supabaseAnonKey: "",
+  supabaseUrl: "https://norufsavcbobhyusnorb.supabase.co",
+  supabaseAnonKey: "sb_publishable_7MLD5jeghPqfAgA6nRLrJQ_kQeKJfui",
 };
